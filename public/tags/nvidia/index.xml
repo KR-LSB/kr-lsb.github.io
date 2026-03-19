@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Nvidia on SeungByeong | ML Inference &amp; Systems</title>
+    <link>http://localhost:1313/tags/nvidia/</link>
+    <description>Recent content in Nvidia on SeungByeong | ML Inference &amp; Systems</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 19 Mar 2026 12:00:00 +0900</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/nvidia/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Benchmarking LLM Inference on RTX 5070 Ti: AWQ vs NVFP4 and Why Prefix Caching Changes Everything</title>
+      <link>http://localhost:1313/posts/inferbench-awq-vs-nvfp4/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/posts/inferbench-awq-vs-nvfp4/</guid>
+      <description>I benchmarked two quantization formats and prefix caching on NVIDIA&amp;rsquo;s Blackwell consumer GPU. AWQ beat NVFP4 by 56% in throughput, and prefix caching reduced time-to-first-token by 96.5% on a 7.5k token RAG context.</description>
+    </item>
+  </channel>
+</rss>

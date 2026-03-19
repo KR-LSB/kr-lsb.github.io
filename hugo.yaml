@@ -1,0 +1,79 @@
+baseURL: "https://kr-lsb.github.io/"
+languageCode: "en-us"
+title: "SeungByeong | ML Inference & Systems"
+theme: "PaperMod"
+paginate: 10
+
+params:
+  env: production
+  description: "LLM inference optimization, MLOps, and systems engineering"
+  author: "SeungByeong"
+  defaultTheme: auto  # auto / dark / light
+  ShowReadingTime: true
+  ShowShareButtons: true
+  ShowPostNavLinks: true
+  ShowBreadCrumbs: true
+  ShowCodeCopyButtons: true
+  ShowToc: true
+  TocOpen: false
+  comments: false
+
+  homeInfoParams:
+    Title: "Hi, I'm SeungByeong"
+    Content: >
+      ML engineer focused on **LLM inference optimization** and systems engineering.
+      Currently building [InferBench](https://github.com/KR-LSB/inferbench) — 
+      benchmarking LLM inference on consumer Blackwell GPUs.
+
+  socialIcons:
+    - name: github
+      url: "https://github.com/KR-LSB"
+    - name: email
+      url: "mailto:your-email@example.com"
+    # - name: linkedin
+    #   url: "https://linkedin.com/in/your-profile"
+
+  # Search
+  fuseOpts:
+    isCaseSensitive: false
+    shouldSort: true
+    location: 0
+    distance: 1000
+    threshold: 0.4
+    minMatchCharLength: 0
+    keys: ["title", "permalink", "summary", "content"]
+
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON  # required for search
+
+menu:
+  main:
+    - identifier: posts
+      name: Posts
+      url: /posts/
+      weight: 10
+    - identifier: tags
+      name: Tags
+      url: /tags/
+      weight: 20
+    - identifier: search
+      name: Search
+      url: /search/
+      weight: 30
+    - identifier: about
+      name: About
+      url: /about/
+      weight: 40
+
+markup:
+  highlight:
+    codeFences: true
+    guessSyntax: true
+    lineNos: false
+    style: monokai
+  goldmark:
+    renderer:
+      unsafe: true  # allow raw HTML in markdown (for charts, embeds)

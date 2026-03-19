@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Tags on SeungByeong | ML Inference &amp; Systems</title>
+    <link>http://localhost:1313/tags/</link>
+    <description>Recent content in Tags on SeungByeong | ML Inference &amp; Systems</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 19 Mar 2026 12:00:00 +0900</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Benchmark</title>
+      <link>http://localhost:1313/tags/benchmark/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/tags/benchmark/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Inference</title>
+      <link>http://localhost:1313/tags/inference/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/tags/inference/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Llm</title>
+      <link>http://localhost:1313/tags/llm/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/tags/llm/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Nvidia</title>
+      <link>http://localhost:1313/tags/nvidia/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/tags/nvidia/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Quantization</title>
+      <link>http://localhost:1313/tags/quantization/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/tags/quantization/</guid>
+      <description></description>
+    </item>
+    <item>
+      <title>Vllm</title>
+      <link>http://localhost:1313/tags/vllm/</link>
+      <pubDate>Thu, 19 Mar 2026 12:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/tags/vllm/</guid>
+      <description></description>
+    </item>
+  </channel>
+</rss>
