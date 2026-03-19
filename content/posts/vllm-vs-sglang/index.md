@@ -1,6 +1,6 @@
 ---
 title: "vLLM vs SGLang on Blackwell: Which Engine Wins on RTX 5070 Ti?"
-date: 2026-03-19T20:00:00+09:00
+date: 2026-03-19T19:00:00+09:00
 draft: false
 tags: ["llm", "inference", "vllm", "sglang", "benchmark", "nvidia"]
 series: ["InferBench"]
