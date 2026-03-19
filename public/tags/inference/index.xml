@@ -6,8 +6,15 @@
     <description>Recent content in Inference on SeungByeong | ML Inference &amp; Systems</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 19 Mar 2026 12:00:00 +0900</lastBuildDate>
+    <lastBuildDate>Thu, 19 Mar 2026 15:00:00 +0900</lastBuildDate>
     <atom:link href="http://localhost:1313/tags/inference/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context</title>
+      <link>http://localhost:1313/posts/kv-cache-economics/</link>
+      <pubDate>Thu, 19 Mar 2026 15:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/posts/kv-cache-economics/</guid>
+      <description>Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here&amp;rsquo;s the data.</description>
+    </item>
     <item>
       <title>Benchmarking LLM Inference on RTX 5070 Ti: AWQ vs NVFP4 and Why Prefix Caching Changes Everything</title>
       <link>http://localhost:1313/posts/inferbench-awq-vs-nvfp4/</link>

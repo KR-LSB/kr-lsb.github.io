@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Kv-Cache on SeungByeong | ML Inference &amp; Systems</title>
+    <link>http://localhost:1313/tags/kv-cache/</link>
+    <description>Recent content in Kv-Cache on SeungByeong | ML Inference &amp; Systems</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Thu, 19 Mar 2026 15:00:00 +0900</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/kv-cache/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context</title>
+      <link>http://localhost:1313/posts/kv-cache-economics/</link>
+      <pubDate>Thu, 19 Mar 2026 15:00:00 +0900</pubDate>
+      <guid>http://localhost:1313/posts/kv-cache-economics/</guid>
+      <description>Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here&amp;rsquo;s the data.</description>
+    </item>
+  </channel>
+</rss>

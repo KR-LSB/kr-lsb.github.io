@@ -1,6 +1,6 @@
 ---
 title: "KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context"
-date: 2026-03-19T15:00:00+09:00
+date: 2026-03-19T14:30:00+09:00
 draft: false
 tags: ["llm", "inference", "kv-cache", "vllm", "benchmark"]
 series: ["InferBench"]

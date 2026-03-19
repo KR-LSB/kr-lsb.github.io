@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="auto">
+
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context | SeungByeong | ML Inference &amp; Systems</title>
+<meta name="keywords" content="llm, inference, kv-cache, vllm, benchmark">
+<meta name="description" content="Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here&rsquo;s the data.">
+<meta name="author" content="SeungByeong">
+<link rel="canonical" href="http://localhost:1313/posts/kv-cache-economics/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.a29c24210eb31d9ce56f669c66a35c9c51b17376b7764e336a49af7dec914cf0.css" integrity="sha256-opwkIQ6zHZzlb2acZqNcnFGxc3a3dk4zakmvfeyRTPA=" rel="preload stylesheet" as="style">
+<link rel="icon" href="http://localhost:1313/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="http://localhost:1313/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="http://localhost:1313/favicon-32x32.png">
+<link rel="apple-touch-icon" href="http://localhost:1313/apple-touch-icon.png">
+<link rel="mask-icon" href="http://localhost:1313/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<link rel="alternate" hreflang="en" href="http://localhost:1313/posts/kv-cache-economics/">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: rgb(29, 30, 32);
+                --entry: rgb(46, 46, 51);
+                --primary: rgb(218, 218, 219);
+                --secondary: rgb(155, 156, 157);
+                --tertiary: rgb(65, 66, 68);
+                --content: rgb(196, 196, 197);
+                --code-block-bg: rgb(46, 46, 51);
+                --code-bg: rgb(55, 56, 62);
+                --border: rgb(51, 51, 51);
+                color-scheme: dark;
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .toc {
+                background: var(--entry);
+            }
+        }
+
+        @media (prefers-color-scheme: light) {
+            .list::-webkit-scrollbar-thumb {
+                border-color: var(--code-bg);
+            }
+        }
+
+    </style>
+</noscript>
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.querySelector("html").dataset.theme = 'dark';
+    } else if (localStorage.getItem("pref-theme") === "light") {
+       document.querySelector("html").dataset.theme = 'light';
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.querySelector("html").dataset.theme = 'dark';
+    } else {
+        document.querySelector("html").dataset.theme = 'light';
+    }
+
+</script><meta property="og:url" content="http://localhost:1313/posts/kv-cache-economics/">
+  <meta property="og:site_name" content="SeungByeong | ML Inference & Systems">
+  <meta property="og:title" content="KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context">
+  <meta property="og:description" content="Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here’s the data.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="posts">
+    <meta property="article:published_time" content="2026-03-19T15:00:00+09:00">
+    <meta property="article:modified_time" content="2026-03-19T15:00:00+09:00">
+    <meta property="article:tag" content="Llm">
+    <meta property="article:tag" content="Inference">
+    <meta property="article:tag" content="Kv-Cache">
+    <meta property="article:tag" content="Vllm">
+    <meta property="article:tag" content="Benchmark">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context">
+  <meta name="twitter:description" content="Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here’s the data.">
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Posts",
+      "item": "http://localhost:1313/posts/"
+    }, 
+    {
+      "@type": "ListItem",
+      "position":  2 ,
+      "name": "KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context",
+      "item": "http://localhost:1313/posts/kv-cache-economics/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context",
+  "name": "KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context",
+  "description": "Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here\u0026rsquo;s the data.",
+  "keywords": [
+    "llm", "inference", "kv-cache", "vllm", "benchmark"
+  ],
+  "articleBody": "In my previous post, I benchmarked AWQ vs NVFP4 quantization and showed that prefix caching reduced TTFT by 96.5% on a 7.5k token RAG context. But that experiment used a single context length.\nThe natural follow-up question: how does this scale? If your context grows from 2k to 16k tokens, how much worse does it get? And does prefix caching keep up?\nI ran Experiment 3 of InferBench to answer this. The results reveal why NVIDIA calls KV cache “the new memory wall.”\nThe Experiment I swept four context lengths — 2k, 4k, 8k, and 16k tokens — on Qwen3-8B-AWQ running on an RTX 5070 Ti (16GB) via vLLM 0.13.0. For each context length, I sent 5 measurement requests (plus 1 warmup) simulating a RAG workload: a long technical document as context, with different questions appended each time.\nI ran this twice: once with prefix caching enabled (default), once with --no-enable-prefix-caching.\nKey parameters:\nModel: Qwen3-8B-AWQ (awq_marlin kernel) Output: 256 tokens max per request Concurrency: 1 (to isolate context length effects) GPU memory utilization: 90% The Results Without Prefix Caching: The Cost Curve Context TTFT (mean) TPS Prefill % Total Latency ~2k 505 ms 74.4 12.7% 4,148 ms ~4k 1,200 ms 65.3 23.6% 5,119 ms ~8k 2,547 ms 62.7 38.3% 6,668 ms ~16k 6,306 ms 61.0 59.9% 10,517 ms The pattern is clear and punishing:\nTTFT scales super-linearly with context length. Going from 2k to 16k (8x more tokens) increased TTFT by 12.5x (505ms → 6,306ms). This is worse than linear because longer sequences require more KV cache memory, increasing memory pressure and potentially triggering scheduling delays.\nPrefill dominates at long contexts. At 2k tokens, prefill is only 12.7% of total request time. At 16k, it’s 59.9% — the user spends more time waiting for the model to read than to write. This is the core insight behind NVIDIA’s disaggregated inference: prefill and decode have fundamentally different resource profiles, and lumping them together on one GPU wastes capacity.\nDecode TPS also degrades, but less dramatically. TPS dropped from 74.4 to 61.0 across the range — an 18% decline. This happens because longer KV caches consume more memory bandwidth during each decode step, even though the computation per token stays the same.\nWith Prefix Caching: The Fix Context TTFT (mean) TPS Prefill % Total Latency ~2k 62 ms 95.6 2.2% 2,751 ms ~4k 72 ms 94.7 2.7% 2,725 ms ~8k 78 ms 85.5 2.5% 3,084 ms ~16k 111 ms 69.1 3.2% 3,553 ms With caching, the picture transforms completely. TTFT stays nearly flat — 62ms to 111ms across an 8x context increase. The cache absorbs the entire prefill cost after the first request, turning a 6.3-second wait into a 111ms blip.\nThe Comparison: Cache ON vs OFF Context Cache OFF TTFT Cache ON TTFT Speedup Cache OFF Prefill % Cache ON Prefill % ~2k 505 ms 62 ms 8x 12.7% 2.2% ~4k 1,200 ms 72 ms 17x 23.6% 2.7% ~8k 2,547 ms 78 ms 33x 38.3% 2.5% ~16k 6,306 ms 111 ms 57x 59.9% 3.2% The speedup from prefix caching doesn’t just increase with context length — it accelerates. At 2k, caching gives you 8x. At 16k, it’s 57x. This is because caching eliminates a cost that itself grows super-linearly.\nThree Insights 1. KV Cache is the real cost center, not model weights With AWQ quantization, Qwen3-8B uses only 5.7 GiB of VRAM for model weights. That leaves ~7.2 GiB for KV cache on a 16GB GPU. At 16k context, a single request’s KV cache is substantial — and without caching, every request pays the full prefill cost from scratch.\nThe economic argument is simple: if you’re running a RAG service and your users ask multiple questions about the same document, you’re burning GPU compute re-processing the same context over and over. Prefix caching turns that from O(n) cost per query to O(1) amortized.\n2. The “context length tax” hits decode too Even with caching (which eliminates prefill overhead), TPS dropped from 95.6 at 2k to 69.1 at 16k — a 28% decline. This is purely from the larger KV cache consuming more memory bandwidth during each attention computation in the decode phase.\nThis has direct implications for pricing: a 16k-context response costs ~38% more compute time than a 2k-context response, even when prefill is cached. This is why cloud providers charge per-token differently based on context length, and why Jensen Huang’s “token tiers” make economic sense.\n3. The warmup cost reveals true prefill expense The warmup requests (first cold request at each context length) show what prefill actually costs without any caching:\nContext Cold Prefill (warmup TTFT) ~2k 607 ms ~4k 1,245 ms ~8k 2,599 ms ~16k 5,911 ms Note that the 2k warmup in the Cache ON run showed 26,650ms — this was the very first request after server startup, which includes model initialization overhead. The Cache OFF warmup at 607ms is a more accurate measure of pure 2k prefill cost.\nWhat This Means for Production RAG Systems If you’re building a RAG system, these numbers should change how you think about architecture:\n1. Enable prefix caching. Always. There’s no downside — decode performance is identical (or slightly better due to less memory pressure). The upside at long contexts is a 57x TTFT improvement.\n2. Batch your RAG queries by document. If five users ask questions about the same document, serve them sequentially on the same vLLM instance. The first request pays the full prefill; the next four get 57x faster TTFT.\n3. Monitor KV cache utilization, not just GPU utilization. Your GPU might show 50% compute usage but be completely bottlenecked on KV cache memory. vLLM exposes gpu_cache_usage_perc via its metrics endpoint — watch it.\n4. Context length is a cost lever. Trimming your RAG context from 16k to 8k doesn’t just save TTFT — it also improves decode TPS by ~10%. Consider whether your retrieval pipeline is sending more context than the model actually needs.\nWhat arXiv:2601.09527 Didn’t Measure The original RTX 5070 Ti benchmark paper reported throughput at fixed context lengths but never varied context length systematically or tested prefix caching. InferBench Experiment 3 adds:\nContext scaling curve (2k → 4k → 8k → 16k) with precise TTFT measurements Prefix caching impact at each context length (8x to 57x speedup) Prefill ratio analysis showing prefill grows from 12.7% to 59.9% of total latency Decode TPS degradation curve as KV cache grows What’s Next SGLang comparison — Does SGLang handle long contexts differently than vLLM? EXAONE-Deep-7.8B — Korean-language model on the same context sweep Multi-concurrency × context length — How does c=8 interact with 16k context? Prometheus + Grafana — Real-time KV cache utilization dashboards All code and raw results: github.com/KR-LSB/inferbench\nHardware \u0026 Software Component Spec GPU NVIDIA RTX 5070 Ti 16GB GDDR7 (SM_120, Blackwell) CPU AMD Ryzen 9 9900X (16C/32T) OS Windows 11 + WSL2 (Ubuntu 24.04) Driver 595.79 (CUDA 13.2) vLLM 0.13.0 (Docker: vllm/vllm-openai:latest) Model Qwen/Qwen3-8B-AWQ (awq_marlin kernel) This is Part 2 of the InferBench series. Part 1: AWQ vs NVFP4 and Why Prefix Caching Changes Everything.\nSeungByeong is a software engineer focused on LLM inference optimization. GitHub · InferBench\n",
+  "wordCount" : "1184",
+  "inLanguage": "en",
+  "datePublished": "2026-03-19T15:00:00+09:00",
+  "dateModified": "2026-03-19T15:00:00+09:00",
+  "author":{
+    "@type": "Person",
+    "name": "SeungByeong"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "http://localhost:1313/posts/kv-cache-economics/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "SeungByeong | ML Inference \u0026 Systems",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "http://localhost:1313/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+<body id="top">
+    <header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="http://localhost:1313/" accesskey="h" title="SeungByeong | ML Inference &amp; Systems (Alt + H)">SeungByeong | ML Inference &amp; Systems</a>
+            <div class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)" aria-label="Toggle theme">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <ul id="menu">
+            <li>
+                <a href="http://localhost:1313/posts/" title="Posts">
+                    <span>Posts</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/tags/" title="Tags">
+                    <span>Tags</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/search/" title="Search (Alt &#43; /)" accesskey=/>
+                    <span>Search</span>
+                </a>
+            </li>
+            <li>
+                <a href="http://localhost:1313/about/" title="About">
+                    <span>About</span>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="http://localhost:1313/">Home</a>&nbsp;»&nbsp;<a href="http://localhost:1313/posts/">Posts</a></div>
+    <h1 class="post-title entry-hint-parent">
+      KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context
+    </h1>
+    <div class="post-meta"><span title='2026-03-19 15:00:00 +0900 KST'>March 19, 2026</span>&nbsp;·&nbsp;<span>6 min</span>&nbsp;·&nbsp;<span>SeungByeong</span>
+
+</div>
+  </header> <div class="toc">
+    <details  open>
+        <summary accesskey="c" title="(Alt + C)">
+            <span class="details">Table of Contents</span>
+        </summary>
+
+        <div class="inner"><ul>
+                <li>
+                    <a href="#the-experiment" aria-label="The Experiment">The Experiment</a></li>
+                <li>
+                    <a href="#the-results" aria-label="The Results">The Results</a><ul>
+                        
+                <li>
+                    <a href="#without-prefix-caching-the-cost-curve" aria-label="Without Prefix Caching: The Cost Curve">Without Prefix Caching: The Cost Curve</a></li>
+                <li>
+                    <a href="#with-prefix-caching-the-fix" aria-label="With Prefix Caching: The Fix">With Prefix Caching: The Fix</a></li>
+                <li>
+                    <a href="#the-comparison-cache-on-vs-off" aria-label="The Comparison: Cache ON vs OFF">The Comparison: Cache ON vs OFF</a></li></ul>
+                </li>
+                <li>
+                    <a href="#three-insights" aria-label="Three Insights">Three Insights</a><ul>
+                        
+                <li>
+                    <a href="#1-kv-cache-is-the-real-cost-center-not-model-weights" aria-label="1. KV Cache is the real cost center, not model weights">1. KV Cache is the real cost center, not model weights</a></li>
+                <li>
+                    <a href="#2-the-context-length-tax-hits-decode-too" aria-label="2. The &ldquo;context length tax&rdquo; hits decode too">2. The &ldquo;context length tax&rdquo; hits decode too</a></li>
+                <li>
+                    <a href="#3-the-warmup-cost-reveals-true-prefill-expense" aria-label="3. The warmup cost reveals true prefill expense">3. The warmup cost reveals true prefill expense</a></li></ul>
+                </li>
+                <li>
+                    <a href="#what-this-means-for-production-rag-systems" aria-label="What This Means for Production RAG Systems">What This Means for Production RAG Systems</a></li>
+                <li>
+                    <a href="#what-arxiv260109527-didnt-measure" aria-label="What arXiv:2601.09527 Didn&rsquo;t Measure">What arXiv:2601.09527 Didn&rsquo;t Measure</a></li>
+                <li>
+                    <a href="#whats-next" aria-label="What&rsquo;s Next">What&rsquo;s Next</a></li>
+                <li>
+                    <a href="#hardware--software" aria-label="Hardware &amp; Software">Hardware &amp; Software</a>
+                </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content"><p>In my <a href="/posts/inferbench-awq-vs-nvfp4/">previous post</a>, I benchmarked AWQ vs NVFP4 quantization and showed that prefix caching reduced TTFT by 96.5% on a 7.5k token RAG context. But that experiment used a single context length.</p>
+<p>The natural follow-up question: <strong>how does this scale?</strong> If your context grows from 2k to 16k tokens, how much worse does it get? And does prefix caching keep up?</p>
+<p>I ran Experiment 3 of <a href="https://github.com/KR-LSB/inferbench">InferBench</a> to answer this. The results reveal why NVIDIA calls KV cache &ldquo;the new memory wall.&rdquo;</p>
+<hr>
+<h2 id="the-experiment">The Experiment<a hidden class="anchor" aria-hidden="true" href="#the-experiment">#</a></h2>
+<p>I swept four context lengths — 2k, 4k, 8k, and 16k tokens — on Qwen3-8B-AWQ running on an RTX 5070 Ti (16GB) via vLLM 0.13.0. For each context length, I sent 5 measurement requests (plus 1 warmup) simulating a RAG workload: a long technical document as context, with different questions appended each time.</p>
+<p>I ran this twice: once with prefix caching enabled (default), once with <code>--no-enable-prefix-caching</code>.</p>
+<p><strong>Key parameters:</strong></p>
+<ul>
+<li>Model: Qwen3-8B-AWQ (awq_marlin kernel)</li>
+<li>Output: 256 tokens max per request</li>
+<li>Concurrency: 1 (to isolate context length effects)</li>
+<li>GPU memory utilization: 90%</li>
+</ul>
+<hr>
+<h2 id="the-results">The Results<a hidden class="anchor" aria-hidden="true" href="#the-results">#</a></h2>
+<h3 id="without-prefix-caching-the-cost-curve">Without Prefix Caching: The Cost Curve<a hidden class="anchor" aria-hidden="true" href="#without-prefix-caching-the-cost-curve">#</a></h3>
+<table>
+  <thead>
+      <tr>
+          <th>Context</th>
+          <th>TTFT (mean)</th>
+          <th>TPS</th>
+          <th>Prefill %</th>
+          <th>Total Latency</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>~2k</td>
+          <td>505 ms</td>
+          <td>74.4</td>
+          <td>12.7%</td>
+          <td>4,148 ms</td>
+      </tr>
+      <tr>
+          <td>~4k</td>
+          <td>1,200 ms</td>
+          <td>65.3</td>
+          <td>23.6%</td>
+          <td>5,119 ms</td>
+      </tr>
+      <tr>
+          <td>~8k</td>
+          <td>2,547 ms</td>
+          <td>62.7</td>
+          <td>38.3%</td>
+          <td>6,668 ms</td>
+      </tr>
+      <tr>
+          <td>~16k</td>
+          <td>6,306 ms</td>
+          <td>61.0</td>
+          <td>59.9%</td>
+          <td>10,517 ms</td>
+      </tr>
+  </tbody>
+</table>
+<p>The pattern is clear and punishing:</p>
+<p><strong>TTFT scales super-linearly with context length.</strong> Going from 2k to 16k (8x more tokens) increased TTFT by 12.5x (505ms → 6,306ms). This is worse than linear because longer sequences require more KV cache memory, increasing memory pressure and potentially triggering scheduling delays.</p>
+<p><strong>Prefill dominates at long contexts.</strong> At 2k tokens, prefill is only 12.7% of total request time. At 16k, it&rsquo;s 59.9% — the user spends more time waiting for the model to <em>read</em> than to <em>write</em>. This is the core insight behind NVIDIA&rsquo;s disaggregated inference: prefill and decode have fundamentally different resource profiles, and lumping them together on one GPU wastes capacity.</p>
+<p><strong>Decode TPS also degrades, but less dramatically.</strong> TPS dropped from 74.4 to 61.0 across the range — an 18% decline. This happens because longer KV caches consume more memory bandwidth during each decode step, even though the computation per token stays the same.</p>
+<h3 id="with-prefix-caching-the-fix">With Prefix Caching: The Fix<a hidden class="anchor" aria-hidden="true" href="#with-prefix-caching-the-fix">#</a></h3>
+<table>
+  <thead>
+      <tr>
+          <th>Context</th>
+          <th>TTFT (mean)</th>
+          <th>TPS</th>
+          <th>Prefill %</th>
+          <th>Total Latency</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>~2k</td>
+          <td>62 ms</td>
+          <td>95.6</td>
+          <td>2.2%</td>
+          <td>2,751 ms</td>
+      </tr>
+      <tr>
+          <td>~4k</td>
+          <td>72 ms</td>
+          <td>94.7</td>
+          <td>2.7%</td>
+          <td>2,725 ms</td>
+      </tr>
+      <tr>
+          <td>~8k</td>
+          <td>78 ms</td>
+          <td>85.5</td>
+          <td>2.5%</td>
+          <td>3,084 ms</td>
+      </tr>
+      <tr>
+          <td>~16k</td>
+          <td>111 ms</td>
+          <td>69.1</td>
+          <td>3.2%</td>
+          <td>3,553 ms</td>
+      </tr>
+  </tbody>
+</table>
+<p>With caching, the picture transforms completely. TTFT stays nearly flat — 62ms to 111ms across an 8x context increase. The cache absorbs the entire prefill cost after the first request, turning a 6.3-second wait into a 111ms blip.</p>
+<h3 id="the-comparison-cache-on-vs-off">The Comparison: Cache ON vs OFF<a hidden class="anchor" aria-hidden="true" href="#the-comparison-cache-on-vs-off">#</a></h3>
+<table>
+  <thead>
+      <tr>
+          <th>Context</th>
+          <th>Cache OFF TTFT</th>
+          <th>Cache ON TTFT</th>
+          <th><strong>Speedup</strong></th>
+          <th>Cache OFF Prefill %</th>
+          <th>Cache ON Prefill %</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>~2k</td>
+          <td>505 ms</td>
+          <td>62 ms</td>
+          <td><strong>8x</strong></td>
+          <td>12.7%</td>
+          <td>2.2%</td>
+      </tr>
+      <tr>
+          <td>~4k</td>
+          <td>1,200 ms</td>
+          <td>72 ms</td>
+          <td><strong>17x</strong></td>
+          <td>23.6%</td>
+          <td>2.7%</td>
+      </tr>
+      <tr>
+          <td>~8k</td>
+          <td>2,547 ms</td>
+          <td>78 ms</td>
+          <td><strong>33x</strong></td>
+          <td>38.3%</td>
+          <td>2.5%</td>
+      </tr>
+      <tr>
+          <td>~16k</td>
+          <td>6,306 ms</td>
+          <td>111 ms</td>
+          <td><strong>57x</strong></td>
+          <td>59.9%</td>
+          <td>3.2%</td>
+      </tr>
+  </tbody>
+</table>
+<p>The speedup from prefix caching doesn&rsquo;t just increase with context length — it <em>accelerates</em>. At 2k, caching gives you 8x. At 16k, it&rsquo;s 57x. This is because caching eliminates a cost that itself grows super-linearly.</p>
+<hr>
+<h2 id="three-insights">Three Insights<a hidden class="anchor" aria-hidden="true" href="#three-insights">#</a></h2>
+<h3 id="1-kv-cache-is-the-real-cost-center-not-model-weights">1. KV Cache is the real cost center, not model weights<a hidden class="anchor" aria-hidden="true" href="#1-kv-cache-is-the-real-cost-center-not-model-weights">#</a></h3>
+<p>With AWQ quantization, Qwen3-8B uses only 5.7 GiB of VRAM for model weights. That leaves ~7.2 GiB for KV cache on a 16GB GPU. At 16k context, a single request&rsquo;s KV cache is substantial — and without caching, every request pays the full prefill cost from scratch.</p>
+<p>The economic argument is simple: if you&rsquo;re running a RAG service and your users ask multiple questions about the same document, you&rsquo;re burning GPU compute re-processing the same context over and over. Prefix caching turns that from O(n) cost per query to O(1) amortized.</p>
+<h3 id="2-the-context-length-tax-hits-decode-too">2. The &ldquo;context length tax&rdquo; hits decode too<a hidden class="anchor" aria-hidden="true" href="#2-the-context-length-tax-hits-decode-too">#</a></h3>
+<p>Even with caching (which eliminates prefill overhead), TPS dropped from 95.6 at 2k to 69.1 at 16k — a 28% decline. This is purely from the larger KV cache consuming more memory bandwidth during each attention computation in the decode phase.</p>
+<p>This has direct implications for pricing: a 16k-context response costs ~38% more compute time than a 2k-context response, even when prefill is cached. This is why cloud providers charge per-token differently based on context length, and why Jensen Huang&rsquo;s &ldquo;token tiers&rdquo; make economic sense.</p>
+<h3 id="3-the-warmup-cost-reveals-true-prefill-expense">3. The warmup cost reveals true prefill expense<a hidden class="anchor" aria-hidden="true" href="#3-the-warmup-cost-reveals-true-prefill-expense">#</a></h3>
+<p>The warmup requests (first cold request at each context length) show what prefill actually costs without any caching:</p>
+<table>
+  <thead>
+      <tr>
+          <th>Context</th>
+          <th>Cold Prefill (warmup TTFT)</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>~2k</td>
+          <td>607 ms</td>
+      </tr>
+      <tr>
+          <td>~4k</td>
+          <td>1,245 ms</td>
+      </tr>
+      <tr>
+          <td>~8k</td>
+          <td>2,599 ms</td>
+      </tr>
+      <tr>
+          <td>~16k</td>
+          <td>5,911 ms</td>
+      </tr>
+  </tbody>
+</table>
+<p>Note that the 2k warmup in the Cache ON run showed 26,650ms — this was the very first request after server startup, which includes model initialization overhead. The Cache OFF warmup at 607ms is a more accurate measure of pure 2k prefill cost.</p>
+<hr>
+<h2 id="what-this-means-for-production-rag-systems">What This Means for Production RAG Systems<a hidden class="anchor" aria-hidden="true" href="#what-this-means-for-production-rag-systems">#</a></h2>
+<p>If you&rsquo;re building a RAG system, these numbers should change how you think about architecture:</p>
+<p><strong>1. Enable prefix caching. Always.</strong> There&rsquo;s no downside — decode performance is identical (or slightly better due to less memory pressure). The upside at long contexts is a 57x TTFT improvement.</p>
+<p><strong>2. Batch your RAG queries by document.</strong> If five users ask questions about the same document, serve them sequentially on the same vLLM instance. The first request pays the full prefill; the next four get 57x faster TTFT.</p>
+<p><strong>3. Monitor KV cache utilization, not just GPU utilization.</strong> Your GPU might show 50% compute usage but be completely bottlenecked on KV cache memory. vLLM exposes <code>gpu_cache_usage_perc</code> via its metrics endpoint — watch it.</p>
+<p><strong>4. Context length is a cost lever.</strong> Trimming your RAG context from 16k to 8k doesn&rsquo;t just save TTFT — it also improves decode TPS by ~10%. Consider whether your retrieval pipeline is sending more context than the model actually needs.</p>
+<hr>
+<h2 id="what-arxiv260109527-didnt-measure">What arXiv:2601.09527 Didn&rsquo;t Measure<a hidden class="anchor" aria-hidden="true" href="#what-arxiv260109527-didnt-measure">#</a></h2>
+<p>The original RTX 5070 Ti benchmark paper reported throughput at fixed context lengths but never varied context length systematically or tested prefix caching. InferBench Experiment 3 adds:</p>
+<ul>
+<li>Context scaling curve (2k → 4k → 8k → 16k) with precise TTFT measurements</li>
+<li>Prefix caching impact at each context length (8x to 57x speedup)</li>
+<li>Prefill ratio analysis showing prefill grows from 12.7% to 59.9% of total latency</li>
+<li>Decode TPS degradation curve as KV cache grows</li>
+</ul>
+<hr>
+<h2 id="whats-next">What&rsquo;s Next<a hidden class="anchor" aria-hidden="true" href="#whats-next">#</a></h2>
+<ul>
+<li><strong>SGLang comparison</strong> — Does SGLang handle long contexts differently than vLLM?</li>
+<li><strong>EXAONE-Deep-7.8B</strong> — Korean-language model on the same context sweep</li>
+<li><strong>Multi-concurrency × context length</strong> — How does c=8 interact with 16k context?</li>
+<li><strong>Prometheus + Grafana</strong> — Real-time KV cache utilization dashboards</li>
+</ul>
+<p>All code and raw results: <strong><a href="https://github.com/KR-LSB/inferbench">github.com/KR-LSB/inferbench</a></strong></p>
+<hr>
+<h2 id="hardware--software">Hardware &amp; Software<a hidden class="anchor" aria-hidden="true" href="#hardware--software">#</a></h2>
+<table>
+  <thead>
+      <tr>
+          <th>Component</th>
+          <th>Spec</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>GPU</td>
+          <td>NVIDIA RTX 5070 Ti 16GB GDDR7 (SM_120, Blackwell)</td>
+      </tr>
+      <tr>
+          <td>CPU</td>
+          <td>AMD Ryzen 9 9900X (16C/32T)</td>
+      </tr>
+      <tr>
+          <td>OS</td>
+          <td>Windows 11 + WSL2 (Ubuntu 24.04)</td>
+      </tr>
+      <tr>
+          <td>Driver</td>
+          <td>595.79 (CUDA 13.2)</td>
+      </tr>
+      <tr>
+          <td>vLLM</td>
+          <td>0.13.0 (Docker: vllm/vllm-openai:latest)</td>
+      </tr>
+      <tr>
+          <td>Model</td>
+          <td>Qwen/Qwen3-8B-AWQ (awq_marlin kernel)</td>
+      </tr>
+  </tbody>
+</table>
+<hr>
+<p><em>This is Part 2 of the <a href="/series/inferbench/">InferBench series</a>. Part 1: <a href="/posts/inferbench-awq-vs-nvfp4/">AWQ vs NVFP4 and Why Prefix Caching Changes Everything</a>.</em></p>
+<p><em>SeungByeong is a software engineer focused on LLM inference optimization. <a href="https://github.com/KR-LSB">GitHub</a> · <a href="https://github.com/KR-LSB/inferbench">InferBench</a></em></p>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="http://localhost:1313/tags/llm/">Llm</a></li>
+      <li><a href="http://localhost:1313/tags/inference/">Inference</a></li>
+      <li><a href="http://localhost:1313/tags/kv-cache/">Kv-Cache</a></li>
+      <li><a href="http://localhost:1313/tags/vllm/">Vllm</a></li>
+      <li><a href="http://localhost:1313/tags/benchmark/">Benchmark</a></li>
+    </ul>
+<nav class="paginav">
+  <a class="next" href="http://localhost:1313/posts/inferbench-awq-vs-nvfp4/">
+    <span class="title">Next »</span>
+    <br>
+    <span>Benchmarking LLM Inference on RTX 5070 Ti: AWQ vs NVFP4 and Why Prefix Caching Changes Everything</span>
+  </a>
+</nav>
+
+
+<ul class="share-buttons">
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on x"
+            href="https://x.com/intent/tweet/?text=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context&amp;url=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f&amp;hashtags=llm%2cinference%2ckv-cache%2cvllm%2cbenchmark">
+            <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+                <path
+                    d="M512 62.554 L 512 449.446 C 512 483.97 483.97 512 449.446 512 L 62.554 512 C 28.03 512 0 483.97 0 449.446 L 0 62.554 C 0 28.03 28.029 0 62.554 0 L 449.446 0 C 483.971 0 512 28.03 512 62.554 Z M 269.951 190.75 L 182.567 75.216 L 56 75.216 L 207.216 272.95 L 63.9 436.783 L 125.266 436.783 L 235.9 310.383 L 332.567 436.783 L 456 436.783 L 298.367 228.367 L 432.367 75.216 L 371.033 75.216 Z M 127.633 110 L 164.101 110 L 383.481 400.065 L 349.5 400.065 Z" />
+            </svg>
+        </a>
+    </li>
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on linkedin"
+            href="https://www.linkedin.com/shareArticle?mini=true&amp;url=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f&amp;title=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context&amp;summary=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context&amp;source=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f">
+            <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+                <path
+                    d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-288.985,423.278l0,-225.717l-75.04,0l0,225.717l75.04,0Zm270.539,0l0,-129.439c0,-69.333 -37.018,-101.586 -86.381,-101.586c-39.804,0 -57.634,21.891 -67.617,37.266l0,-31.958l-75.021,0c0.995,21.181 0,225.717 0,225.717l75.02,0l0,-126.056c0,-6.748 0.486,-13.492 2.474,-18.315c5.414,-13.475 17.767,-27.434 38.494,-27.434c27.135,0 38.007,20.707 38.007,51.037l0,120.768l75.024,0Zm-307.552,-334.556c-25.674,0 -42.448,16.879 -42.448,39.002c0,21.658 16.264,39.002 41.455,39.002l0.484,0c26.165,0 42.452,-17.344 42.452,-39.002c-0.485,-22.092 -16.241,-38.954 -41.943,-39.002Z" />
+            </svg>
+        </a>
+    </li>
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on reddit"
+            href="https://reddit.com/submit?url=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f&title=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context">
+            <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+                <path
+                    d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-3.446,265.638c0,-22.964 -18.616,-41.58 -41.58,-41.58c-11.211,0 -21.361,4.457 -28.841,11.666c-28.424,-20.508 -67.586,-33.757 -111.204,-35.278l18.941,-89.121l61.884,13.157c0.756,15.734 13.642,28.29 29.56,28.29c16.407,0 29.706,-13.299 29.706,-29.701c0,-16.403 -13.299,-29.702 -29.706,-29.702c-11.666,0 -21.657,6.792 -26.515,16.578l-69.105,-14.69c-1.922,-0.418 -3.939,-0.042 -5.585,1.036c-1.658,1.073 -2.811,2.761 -3.224,4.686l-21.152,99.438c-44.258,1.228 -84.046,14.494 -112.837,35.232c-7.468,-7.164 -17.589,-11.591 -28.757,-11.591c-22.965,0 -41.585,18.616 -41.585,41.58c0,16.896 10.095,31.41 24.568,37.918c-0.639,4.135 -0.99,8.328 -0.99,12.576c0,63.977 74.469,115.836 166.33,115.836c91.861,0 166.334,-51.859 166.334,-115.836c0,-4.218 -0.347,-8.387 -0.977,-12.493c14.564,-6.47 24.735,-21.034 24.735,-38.001Zm-119.474,108.193c-20.27,20.241 -59.115,21.816 -70.534,21.816c-11.428,0 -50.277,-1.575 -70.522,-21.82c-3.007,-3.008 -3.007,-7.882 0,-10.889c3.003,-2.999 7.882,-3.003 10.885,0c12.777,12.781 40.11,17.317 59.637,17.317c19.522,0 46.86,-4.536 59.657,-17.321c3.016,-2.999 7.886,-2.995 10.885,0.008c3.008,3.011 3.003,7.882 -0.008,10.889Zm-5.23,-48.781c-16.373,0 -29.701,-13.324 -29.701,-29.698c0,-16.381 13.328,-29.714 29.701,-29.714c16.378,0 29.706,13.333 29.706,29.714c0,16.374 -13.328,29.698 -29.706,29.698Zm-160.386,-29.702c0,-16.381 13.328,-29.71 29.714,-29.71c16.369,0 29.689,13.329 29.689,29.71c0,16.373 -13.32,29.693 -29.689,29.693c-16.386,0 -29.714,-13.32 -29.714,-29.693Z" />
+            </svg>
+        </a>
+    </li>
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on facebook"
+            href="https://facebook.com/sharer/sharer.php?u=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f">
+            <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+                <path
+                    d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-106.468,0l0,-192.915l66.6,0l12.672,-82.621l-79.272,0l0,-53.617c0,-22.603 11.073,-44.636 46.58,-44.636l36.042,0l0,-70.34c0,0 -32.71,-5.582 -63.982,-5.582c-65.288,0 -107.96,39.569 -107.96,111.204l0,62.971l-72.573,0l0,82.621l72.573,0l0,192.915l-191.104,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Z" />
+            </svg>
+        </a>
+    </li>
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on whatsapp"
+            href="https://api.whatsapp.com/send?text=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context%20-%20http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f">
+            <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve" height="30px" width="30px" fill="currentColor">
+                <path
+                    d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-58.673,127.703c-33.842,-33.881 -78.847,-52.548 -126.798,-52.568c-98.799,0 -179.21,80.405 -179.249,179.234c-0.013,31.593 8.241,62.428 23.927,89.612l-25.429,92.884l95.021,-24.925c26.181,14.28 55.659,21.807 85.658,21.816l0.074,0c98.789,0 179.206,-80.413 179.247,-179.243c0.018,-47.895 -18.61,-92.93 -52.451,-126.81Zm-126.797,275.782l-0.06,0c-26.734,-0.01 -52.954,-7.193 -75.828,-20.767l-5.441,-3.229l-56.386,14.792l15.05,-54.977l-3.542,-5.637c-14.913,-23.72 -22.791,-51.136 -22.779,-79.287c0.033,-82.142 66.867,-148.971 149.046,-148.971c39.793,0.014 77.199,15.531 105.329,43.692c28.128,28.16 43.609,65.592 43.594,105.4c-0.034,82.149 -66.866,148.983 -148.983,148.984Zm81.721,-111.581c-4.479,-2.242 -26.499,-13.075 -30.604,-14.571c-4.105,-1.495 -7.091,-2.241 -10.077,2.241c-2.986,4.483 -11.569,14.572 -14.182,17.562c-2.612,2.988 -5.225,3.364 -9.703,1.12c-4.479,-2.241 -18.91,-6.97 -36.017,-22.23c-13.314,-11.876 -22.304,-26.542 -24.916,-31.026c-2.612,-4.484 -0.279,-6.908 1.963,-9.14c2.016,-2.007 4.48,-5.232 6.719,-7.847c2.24,-2.615 2.986,-4.484 4.479,-7.472c1.493,-2.99 0.747,-5.604 -0.374,-7.846c-1.119,-2.241 -10.077,-24.288 -13.809,-33.256c-3.635,-8.733 -7.327,-7.55 -10.077,-7.688c-2.609,-0.13 -5.598,-0.158 -8.583,-0.158c-2.986,0 -7.839,1.121 -11.944,5.604c-4.105,4.484 -15.675,15.32 -15.675,37.364c0,22.046 16.048,43.342 18.287,46.332c2.24,2.99 31.582,48.227 76.511,67.627c10.685,4.615 19.028,7.371 25.533,9.434c10.728,3.41 20.492,2.929 28.209,1.775c8.605,-1.285 26.499,-10.833 30.231,-21.295c3.732,-10.464 3.732,-19.431 2.612,-21.298c-1.119,-1.869 -4.105,-2.99 -8.583,-5.232Z" />
+            </svg>
+        </a>
+    </li>
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on telegram"
+            href="https://telegram.me/share/url?text=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context&amp;url=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f">
+            <svg version="1.1" xml:space="preserve" viewBox="2 2 28 28" height="30px" width="30px" fill="currentColor">
+                <path
+                    d="M26.49,29.86H5.5a3.37,3.37,0,0,1-2.47-1,3.35,3.35,0,0,1-1-2.47V5.48A3.36,3.36,0,0,1,3,3,3.37,3.37,0,0,1,5.5,2h21A3.38,3.38,0,0,1,29,3a3.36,3.36,0,0,1,1,2.46V26.37a3.35,3.35,0,0,1-1,2.47A3.38,3.38,0,0,1,26.49,29.86Zm-5.38-6.71a.79.79,0,0,0,.85-.66L24.73,9.24a.55.55,0,0,0-.18-.46.62.62,0,0,0-.41-.17q-.08,0-16.53,6.11a.59.59,0,0,0-.41.59.57.57,0,0,0,.43.52l4,1.24,1.61,4.83a.62.62,0,0,0,.63.43.56.56,0,0,0,.4-.17L16.54,20l4.09,3A.9.9,0,0,0,21.11,23.15ZM13.8,20.71l-1.21-4q8.72-5.55,8.78-5.55c.15,0,.23,0,.23.16a.18.18,0,0,1,0,.06s-2.51,2.3-7.52,6.8Z" />
+            </svg>
+        </a>
+    </li>
+    <li>
+        <a target="_blank" rel="noopener noreferrer" aria-label="share KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context on ycombinator"
+            href="https://news.ycombinator.com/submitlink?t=KV%20Cache%20is%20the%20New%20Memory%20Wall%3a%2057x%20TTFT%20Reduction%20at%2016k%20Context&u=http%3a%2f%2flocalhost%3a1313%2fposts%2fkv-cache-economics%2f">
+            <svg version="1.1" xml:space="preserve" width="30px" height="30px" viewBox="0 0 512 512" fill="currentColor"
+                xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+                <path
+                    d="M449.446 0C483.971 0 512 28.03 512 62.554L512 449.446C512 483.97 483.97 512 449.446 512L62.554 512C28.03 512 0 483.97 0 449.446L0 62.554C0 28.03 28.029 0 62.554 0L449.446 0ZM183.8767 87.9921H121.8427L230.6673 292.4508V424.0079H281.3328V292.4508L390.1575 87.9921H328.1233L256 238.2489z" />
+            </svg>
+        </a>
+    </li>
+</ul>
+
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+        <span>&copy; 2026 <a href="http://localhost:1313/">SeungByeong | ML Inference &amp; Systems</a></span> · 
+
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)" class="top-link" id="top-link" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+        <path d="M12 6H0l6-6z" />
+    </svg>
+</a>
+
+<script>
+    let menu = document.getElementById('menu');
+    if (menu) {
+        
+        const scrollPosition = localStorage.getItem("menu-scroll-position");
+        if (scrollPosition) {
+            menu.scrollLeft = parseInt(scrollPosition, 10);
+        }
+        
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        const html = document.querySelector("html");
+        if (html.dataset.theme === "dark") {
+            html.dataset.theme = 'light';
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            html.dataset.theme = 'dark';
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    document.querySelectorAll('pre > code').forEach((codeblock) => {
+        const container = codeblock.parentNode.parentNode;
+
+        const copybutton = document.createElement('button');
+        copybutton.classList.add('copy-code');
+        copybutton.innerHTML = 'copy';
+
+        function copyingDone() {
+            copybutton.innerHTML = 'copied!';
+            setTimeout(() => {
+                copybutton.innerHTML = 'copy';
+            }, 2000);
+        }
+
+        copybutton.addEventListener('click', (cb) => {
+            if ('clipboard' in navigator) {
+                navigator.clipboard.writeText(codeblock.textContent);
+                copyingDone();
+                return;
+            }
+
+            const range = document.createRange();
+            range.selectNodeContents(codeblock);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            try {
+                document.execCommand('copy');
+                copyingDone();
+            } catch (e) { };
+            selection.removeRange(range);
+        });
+
+        if (container.classList.contains("highlight")) {
+            container.appendChild(copybutton);
+        } else if (container.parentNode.firstChild == container) {
+            
+        } else if (codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.nodeName == "TABLE") {
+            
+            codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.appendChild(copybutton);
+        } else {
+            
+            codeblock.parentNode.appendChild(copybutton);
+        }
+    });
+</script>
+</body>
+
+</html>
