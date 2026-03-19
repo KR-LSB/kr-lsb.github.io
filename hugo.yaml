@@ -2,7 +2,8 @@ baseURL: "https://kr-lsb.github.io/"
 languageCode: "en-us"
 title: "SeungByeong | ML Inference & Systems"
 theme: "PaperMod"
-paginate: 10
+pagination:
+  paginate: 10
 
 params:
   env: production
