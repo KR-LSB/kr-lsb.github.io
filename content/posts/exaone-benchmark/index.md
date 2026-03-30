@@ -1,157 +1,220 @@
 ---
-title: "KV Cache is the New Memory Wall: 57x TTFT Reduction at 16k Context"
-date: 2026-03-19T15:00:00+09:00
+title: "EXAONE Deep 7.8B on Blackwell: Korean LLM Inference, Benchmarked"
+date: 2026-03-30
 draft: false
-tags: ["llm", "inference", "kv-cache", "vllm", "benchmark"]
+tags: ["LLM", "inference", "EXAONE", "vLLM", "SGLang", "RTX 5070 Ti", "Blackwell", "benchmark"]
 series: ["InferBench"]
-summary: "Without prefix caching, doubling context length more than doubles your time-to-first-token. At 16k tokens, prefill consumes 60% of total latency — 6.3 seconds of waiting. Prefix caching cuts that to 111ms. Here's the data."
-ShowToc: true
-TocOpen: true
+summary: "First public inference benchmark of LG AI Research's EXAONE-Deep-7.8B on a consumer Blackwell GPU. 2x throughput vs Qwen3-8B at high concurrency, 11x TTFT reduction with prefix caching on Korean RAG, and a head-to-head vLLM vs SGLang comparison."
 ---
 
-In my [previous post](/posts/inferbench-awq-vs-nvfp4/), I benchmarked AWQ vs NVFP4 quantization and showed that prefix caching reduced TTFT by 96.5% on a 7.5k token RAG context. But that experiment used a single context length.
+## TL;DR
 
-The natural follow-up question: **how does this scale?** If your context grows from 2k to 16k tokens, how much worse does it get? And does prefix caching keep up?
+- **EXAONE-Deep-7.8B-AWQ** delivers **2x aggregate throughput** vs Qwen3-8B-AWQ at c=32 on RTX 5070 Ti (1,934 vs 969 TPS)
+- Prefix caching reduces Korean RAG TTFT by **11.3x** (184.9 → 16.4 ms) on vLLM
+- SGLang wins on **decode speed** (+10%) and **tail latency at high concurrency**, vLLM wins on **stability at mid-range concurrency**
+- Both models hit ~1,940 TPS peak — the GPU is the ceiling, not the model
+- Getting EXAONE running on SGLang required patching a `transformers` compatibility issue — details in the troubleshooting section
 
-I ran Experiment 3 of [InferBench](https://github.com/KR-LSB/inferbench) to answer this. The results reveal why NVIDIA calls KV cache "the new memory wall."
+## Why EXAONE?
 
----
+[EXAONE-Deep-7.8B](https://huggingface.co/LGAI-EXAONE/EXAONE-Deep-7.8B) is LG AI Research's reasoning-specialized Korean LLM. While there are plenty of Qwen and Llama benchmarks on consumer GPUs, **there is virtually no public data on EXAONE inference performance on Blackwell hardware**. This post fills that gap.
 
-## The Experiment
+There's also a personal connection: I fine-tuned EXAONE 7.8B for the [M.A.R.S. project](https://github.com/KR-LSB/M.A.R.S.) (medical AI, SNUBH Datathon 6th/100 teams), so benchmarking its inference characteristics is a natural follow-up.
 
-I swept four context lengths — 2k, 4k, 8k, and 16k tokens — on Qwen3-8B-AWQ running on an RTX 5070 Ti (16GB) via vLLM 0.13.0. For each context length, I sent 5 measurement requests (plus 1 warmup) simulating a RAG workload: a long technical document as context, with different questions appended each time.
+### Test Setup
 
-I ran this twice: once with prefix caching enabled (default), once with `--no-enable-prefix-caching`.
+| Component | Spec |
+|-----------|------|
+| GPU | NVIDIA RTX 5070 Ti 16GB GDDR7 (SM_120, Blackwell) |
+| CPU | AMD Ryzen 9 9900X (16C/32T) |
+| OS | Windows 11 + WSL2 + Docker |
+| vLLM | 0.13.0 (prefix caching ON by default) |
+| SGLang | 0.5.9 |
+| Model | LGAI-EXAONE/EXAONE-Deep-7.8B-AWQ (awq_marlin kernel, 4.96 GiB VRAM) |
+| Baseline | Qwen/Qwen3-8B-AWQ (awq_marlin kernel, 5.7 GiB VRAM) |
 
-**Key parameters:**
-- Model: Qwen3-8B-AWQ (awq_marlin kernel)
-- Output: 256 tokens max per request
-- Concurrency: 1 (to isolate context length effects)
-- GPU memory utilization: 90%
-
----
-
-## The Results
-
-### Without Prefix Caching: The Cost Curve
-
-| Context | TTFT (mean) | TPS | Prefill % | Total Latency |
-|---|---|---|---|---|
-| ~2k | 505 ms | 74.4 | 12.7% | 4,148 ms |
-| ~4k | 1,200 ms | 65.3 | 23.6% | 5,119 ms |
-| ~8k | 2,547 ms | 62.7 | 38.3% | 6,668 ms |
-| ~16k | 6,306 ms | 61.0 | 59.9% | 10,517 ms |
-
-The pattern is clear and punishing:
-
-**TTFT scales super-linearly with context length.** Going from 2k to 16k (8x more tokens) increased TTFT by 12.5x (505ms → 6,306ms). This is worse than linear because longer sequences require more KV cache memory, increasing memory pressure and potentially triggering scheduling delays.
-
-**Prefill dominates at long contexts.** At 2k tokens, prefill is only 12.7% of total request time. At 16k, it's 59.9% — the user spends more time waiting for the model to *read* than to *write*. This is the core insight behind NVIDIA's disaggregated inference: prefill and decode have fundamentally different resource profiles, and lumping them together on one GPU wastes capacity.
-
-**Decode TPS also degrades, but less dramatically.** TPS dropped from 74.4 to 61.0 across the range — an 18% decline. This happens because longer KV caches consume more memory bandwidth during each decode step, even though the computation per token stays the same.
-
-### With Prefix Caching: The Fix
-
-| Context | TTFT (mean) | TPS | Prefill % | Total Latency |
-|---|---|---|---|---|
-| ~2k | 62 ms | 95.6 | 2.2% | 2,751 ms |
-| ~4k | 72 ms | 94.7 | 2.7% | 2,725 ms |
-| ~8k | 78 ms | 85.5 | 2.5% | 3,084 ms |
-| ~16k | 111 ms | 69.1 | 3.2% | 3,553 ms |
-
-With caching, the picture transforms completely. TTFT stays nearly flat — 62ms to 111ms across an 8x context increase. The cache absorbs the entire prefill cost after the first request, turning a 6.3-second wait into a 111ms blip.
-
-### The Comparison: Cache ON vs OFF
-
-| Context | Cache OFF TTFT | Cache ON TTFT | **Speedup** | Cache OFF Prefill % | Cache ON Prefill % |
-|---|---|---|---|---|---|
-| ~2k | 505 ms | 62 ms | **8x** | 12.7% | 2.2% |
-| ~4k | 1,200 ms | 72 ms | **17x** | 23.6% | 2.7% |
-| ~8k | 2,547 ms | 78 ms | **33x** | 38.3% | 2.5% |
-| ~16k | 6,306 ms | 111 ms | **57x** | 59.9% | 3.2% |
-
-The speedup from prefix caching doesn't just increase with context length — it *accelerates*. At 2k, caching gives you 8x. At 16k, it's 57x. This is because caching eliminates a cost that itself grows super-linearly.
+Both models use the same `awq_marlin` kernel — this is an apples-to-apples comparison.
 
 ---
 
-## Three Insights
+## Experiment 5A: Concurrency Scaling
 
-### 1. KV Cache is the real cost center, not model weights
+The first question: how does EXAONE scale under load compared to Qwen3?
 
-With AWQ quantization, Qwen3-8B uses only 5.7 GiB of VRAM for model weights. That leaves ~7.2 GiB for KV cache on a 16GB GPU. At 16k context, a single request's KV cache is substantial — and without caching, every request pays the full prefill cost from scratch.
+### EXAONE vs Qwen3 on vLLM
 
-The economic argument is simple: if you're running a RAG service and your users ask multiple questions about the same document, you're burning GPU compute re-processing the same context over and over. Prefix caching turns that from O(n) cost per query to O(1) amortized.
+| c | Model | Agg TPS | TTFT P50 | TTFT P95 | Decode TPS |
+|--:|-------|--------:|---------:|---------:|-----------:|
+| 1 | Qwen3-8B | 121.5 | 15.4 ms | 15.8 ms | 121.5 |
+| 1 | **EXAONE-7.8B** | **132.0** | **14.6 ms** | 87.0 ms | **133.3** |
+| 8 | Qwen3-8B | 551.7 | 37.3 ms | 37.8 ms | 70.0 |
+| 8 | **EXAONE-7.8B** | **826.6** | **26.9 ms** | 39.2 ms | **125.3** |
+| 16 | Qwen3-8B | 968.8 | 40.5 ms | 42.0 ms | 62.0 |
+| 16 | **EXAONE-7.8B** | **1,186.8** | 98.2 ms | 99.4 ms | **118.7** |
+| 32 | Qwen3-8B | 969.4 | 42.2 ms | 45.0 ms | 31.0 |
+| 32 | **EXAONE-7.8B** | **1,934.1** | 106.1 ms | 117.4 ms | **100.7** |
 
-### 2. The "context length tax" hits decode too
+### Key Finding: EXAONE Doesn't Saturate at c=16
 
-Even with caching (which eliminates prefill overhead), TPS dropped from 95.6 at 2k to 69.1 at 16k — a 28% decline. This is purely from the larger KV cache consuming more memory bandwidth during each attention computation in the decode phase.
+Qwen3 plateaus at c=16 (968 → 969 TPS), but EXAONE keeps scaling to c=32 (1,187 → 1,934 TPS). Why?
 
-This has direct implications for pricing: a 16k-context response costs ~38% more compute time than a 2k-context response, even when prefill is cached. This is why cloud providers charge per-token differently based on context length, and why Jensen Huang's "token tiers" make economic sense.
+**VRAM is the answer.** EXAONE loads at 4.96 GiB vs Qwen3's 5.7 GiB — that's 0.74 GiB more KV cache headroom. The vLLM server reported 68,752 tokens of KV cache capacity and a maximum concurrency of 2.1x for 32K-token requests. More cache space means more concurrent requests can be batched before the scheduler starts queuing.
 
-### 3. The warmup cost reveals true prefill expense
+### EXAONE: vLLM vs SGLang
 
-The warmup requests (first cold request at each context length) show what prefill actually costs without any caching:
+| c | Engine | Agg TPS | TTFT P50 | TTFT P95 | Decode TPS |
+|--:|--------|--------:|---------:|---------:|-----------:|
+| 1 | vLLM | 132.0 | **14.6 ms** | 87.0 ms | 133.3 |
+| 1 | SGLang | **143.7** | 16.8 ms | 200.2 ms | **145.9** |
+| 8 | vLLM | 826.6 | **26.9 ms** | **39.2 ms** | 125.3 |
+| 8 | SGLang | **889.9** | 27.7 ms | 288.7 ms | **140.7** |
+| 16 | vLLM | 1,186.8 | 98.2 ms | 99.4 ms | 118.7 |
+| 16 | SGLang | **1,247.1** | **81.5 ms** | **82.4 ms** | **121.0** |
+| 32 | vLLM | 1,934.1 | 106.1 ms | 117.4 ms | **100.7** |
+| 32 | SGLang | **1,941.3** | **50.6 ms** | **51.5 ms** | 99.0 |
 
-| Context | Cold Prefill (warmup TTFT) |
-|---|---|
-| ~2k | 607 ms |
-| ~4k | 1,245 ms |
-| ~8k | 2,599 ms |
-| ~16k | 5,911 ms |
+The pattern mirrors what we saw with Qwen3 in [Blog 3]({{< ref "/posts/vllm-vs-sglang" >}}):
 
-Note that the 2k warmup in the Cache ON run showed 26,650ms — this was the very first request after server startup, which includes model initialization overhead. The Cache OFF warmup at 607ms is a more accurate measure of pure 2k prefill cost.
+1. **SGLang throughput is consistently 5-8% higher** across all concurrency levels
+2. **SGLang decode TPS is 10% faster** (145.9 vs 133.3 at c=1) — this is a consistent engine-level advantage
+3. **vLLM is more stable at c=1-8** (TTFT P95: 39ms vs 289ms at c=8)
+4. **SGLang wins at high concurrency** — at c=32, TTFT P50 is 50.6ms vs vLLM's 106.1ms
+
+The c=8 P95 spike on SGLang (288.7ms) is the same intermittent pattern we observed with Qwen3. It doesn't appear at c=16 or c=32, suggesting it's a scheduling artifact during the transition from low to medium load.
 
 ---
 
-## What This Means for Production RAG Systems
+## Experiment 5B: Korean RAG Prefix Caching
 
-If you're building a RAG system, these numbers should change how you think about architecture:
+RAG workloads reuse the same document context across multiple queries. Prefix caching exploits this by keeping the context's KV cache in memory. For EXAONE — which is designed for Korean language tasks — this is a critical optimization.
 
-**1. Enable prefix caching. Always.** There's no downside — decode performance is identical (or slightly better due to less memory pressure). The upside at long contexts is a 57x TTFT improvement.
+### Setup
 
-**2. Batch your RAG queries by document.** If five users ask questions about the same document, serve them sequentially on the same vLLM instance. The first request pays the full prefill; the next four get 57x faster TTFT.
+- **Context:** ~2,000 characters of Korean technical documentation (covering KV cache, quantization, and inference optimization)
+- **Questions:** 5 different questions over the same context, 20 requests each
+- **EXAONE-specific:** No system prompt (per EXAONE documentation), context embedded in user message
 
-**3. Monitor KV cache utilization, not just GPU utilization.** Your GPU might show 50% compute usage but be completely bottlenecked on KV cache memory. vLLM exposes `gpu_cache_usage_perc` via its metrics endpoint — watch it.
+### vLLM: Cache ON vs Cache OFF
 
-**4. Context length is a cost lever.** Trimming your RAG context from 16k to 8k doesn't just save TTFT — it also improves decode TPS by ~10%. Consider whether your retrieval pipeline is sending more context than the model actually needs.
+| Metric | Cache OFF | Cache ON | Improvement |
+|--------|----------:|---------:|------------:|
+| **TTFT P50** | 184.9 ms | **16.4 ms** | **11.3x** (91% reduction) |
+| TTFT P95 | 186.6 ms | 77.8 ms | 2.4x |
+| TTFT Mean | 184.5 ms | 20.6 ms | 9.0x |
+| Decode TPS | 130.6 | 129.7 | — (unchanged) |
+| Prefill ratio | 8.60% | 1.03% | 8.3x reduction |
+
+The ~2K context produces a consistent 185ms prefill without caching. With caching, the second request onward drops to 15-17ms — that's the cost of just processing the question portion.
+
+### Cache Warmth Pattern
+
+```
+Request 1 (cold):     188.8 ms  ← Full context + question prefill
+Request 2+ (warm):     16-17 ms ← Only question prefill (context cached)
+New question (partial): ~78 ms  ← Context cached, new question suffix prefill
+```
+
+The partial cache hit (~78ms for a new question with cached context) shows that vLLM's hash-based prefix matching works at sub-prompt granularity — the shared context prefix is reused even when the question suffix changes.
+
+### vLLM vs SGLang: Prefix Caching Comparison
+
+| Metric | vLLM | SGLang |
+|--------|-----:|-------:|
+| Cached TTFT P50 | **16.4 ms** | 17.0 ms |
+| Cached TTFT P95 | 77.8 ms | **22.2 ms** |
+| Decode TPS | 129.7 | **142.7** |
+| Prefill ratio | 1.03% | **1.05%** |
+
+Both engines achieve nearly identical cached TTFT (~17ms). SGLang's tighter P95 (22.2 vs 77.8ms) suggests more consistent cache hit behavior. The decode TPS advantage (+10% for SGLang) persists — this is an engine-level constant, independent of caching.
+
+### Cross-Model: EXAONE vs Qwen3 Prefix Caching
+
+| Metric | Qwen3 (vLLM) | EXAONE (vLLM) | EXAONE (SGLang) |
+|--------|-------------:|--------------:|----------------:|
+| Cached TTFT P50 | 19.8 ms | **16.4 ms** | 17.0 ms |
+| Decode TPS | 115.6 | 129.7 | **142.7** |
+
+EXAONE's cached TTFT is 17% faster than Qwen3 on the same engine. Combined with the higher decode speed, EXAONE delivers a noticeably snappier RAG experience.
 
 ---
 
-## What arXiv:2601.09527 Didn't Measure
+## The Complete Picture
 
-The original RTX 5070 Ti benchmark paper reported throughput at fixed context lengths but never varied context length systematically or tested prefix caching. InferBench Experiment 3 adds:
+Combining all InferBench data, here's how the four configurations compare:
 
-- Context scaling curve (2k → 4k → 8k → 16k) with precise TTFT measurements
-- Prefix caching impact at each context length (8x to 57x speedup)
-- Prefill ratio analysis showing prefill grows from 12.7% to 59.9% of total latency
-- Decode TPS degradation curve as KV cache grows
+| Configuration | Peak Agg TPS | Cached RAG TTFT | Decode TPS | VRAM |
+|--------------|-------------:|----------------:|-----------:|-----:|
+| Qwen3 + vLLM | 969 (c=16) | 19.8 ms | 115.6 | 5.7 GiB |
+| Qwen3 + SGLang | 1,028 (c=32) | 20.7 ms | 127.7 | 5.7 GiB |
+| EXAONE + vLLM | 1,934 (c=32) | 16.4 ms | 129.7 | 4.96 GiB |
+| **EXAONE + SGLang** | **1,941 (c=32)** | **17.0 ms** | **142.7** | **4.96 GiB** |
+
+EXAONE + SGLang is the throughput champion. EXAONE + vLLM has the lowest cached TTFT. All four achieve sub-20ms cached RAG latency.
+
+---
+
+## Troubleshooting: Getting EXAONE on SGLang
+
+This wasn't plug-and-play. Here's the journey for anyone trying to run EXAONE AWQ models on SGLang:
+
+### Problem 1: `ImportError: RopeParameters`
+
+EXAONE's custom `configuration_exaone.py` imports `RopeParameters` from `transformers.modeling_rope_utils`, which only exists in transformers 5.x. SGLang ships with 4.57.1.
+
+**Failed fix:** Upgrading transformers to 5.x breaks SGLang (`sglang 0.5.9 requires transformers==4.57.1`).
+
+### Problem 2: `NoneType | NoneType`
+
+Patching `RopeParameters = None` fails because the class uses `rope_parameters: RopeParameters | None = None` as a type hint. `None | None` is not a valid Python type union.
+
+### Solution: Patch with `typing.Any`
+
+```bash
+sed -i 's/from transformers.modeling_rope_utils import RopeParameters/try:\n    from transformers.modeling_rope_utils import RopeParameters\nexcept ImportError:\n    from typing import Any\n    RopeParameters = Any/' "$FILE"
+```
+
+`Any | None` is a valid type expression, and `RopeParameters` is only used in type hints — it never affects runtime inference behavior.
+
+### Problem 3: `--trust-remote-code` Removed
+
+SGLang 0.5.9 removed the `--trust-remote-code` flag entirely. Just drop it from the command.
+
+### Final Working Command
+
+```bash
+# Patch the cached config file, then launch
+find /root/.cache/huggingface/modules -name "configuration_exaone.py" -path "*EXAONE*AWQ*" | \
+  while read f; do
+    sed -i 's/from transformers.modeling_rope_utils import RopeParameters/try:\n    from transformers.modeling_rope_utils import RopeParameters\nexcept ImportError:\n    from typing import Any\n    RopeParameters = Any/' "$f"
+  done
+
+python3 -m sglang.launch_server \
+  --model-path LGAI-EXAONE/EXAONE-Deep-7.8B-AWQ \
+  --host 0.0.0.0 --port 30000 \
+  --mem-fraction-static 0.90
+```
+
+For vLLM, the fix is simpler — just upgrade transformers inside the container:
+
+```bash
+pip install --upgrade transformers
+vllm serve LGAI-EXAONE/EXAONE-Deep-7.8B-AWQ \
+  --gpu-memory-utilization 0.90 --dtype auto --trust-remote-code
+```
 
 ---
 
 ## What's Next
 
-- **SGLang comparison** — Does SGLang handle long contexts differently than vLLM?
-- **EXAONE-Deep-7.8B** — Korean-language model on the same context sweep
-- **Multi-concurrency × context length** — How does c=8 interact with 16k context?
-- **Prometheus + Grafana** — Real-time KV cache utilization dashboards
+This completes InferBench's four original goals:
 
-All code and raw results: **[github.com/KR-LSB/inferbench](https://github.com/KR-LSB/inferbench)**
+1. ✅ Prefill vs Decode disaggregated measurement ([Blog 1]({{< ref "/posts/inferbench-awq-vs-nvfp4" >}}))
+2. ✅ KV cache optimization / prefix caching ([Blog 2]({{< ref "/posts/kv-cache-economics" >}}))
+3. ✅ Engine comparison: vLLM vs SGLang ([Blog 3]({{< ref "/posts/vllm-vs-sglang" >}}))
+4. ✅ Korean model (EXAONE) on Blackwell (this post)
 
----
-
-## Hardware & Software
-
-| Component | Spec |
-|---|---|
-| GPU | NVIDIA RTX 5070 Ti 16GB GDDR7 (SM_120, Blackwell) |
-| CPU | AMD Ryzen 9 9900X (16C/32T) |
-| OS | Windows 11 + WSL2 (Ubuntu 24.04) |
-| Driver | 595.79 (CUDA 13.2) |
-| vLLM | 0.13.0 (Docker: vllm/vllm-openai:latest) |
-| Model | Qwen/Qwen3-8B-AWQ (awq_marlin kernel) |
+The full benchmark suite, scripts, and raw results are available at [github.com/KR-LSB/inferbench](https://github.com/KR-LSB/inferbench).
 
 ---
 
-*This is Part 2 of the [InferBench series](/series/inferbench/). Part 1: [AWQ vs NVFP4 and Why Prefix Caching Changes Everything](/posts/inferbench-awq-vs-nvfp4/).*
-
-*SeungByeong is a software engineer focused on LLM inference optimization. [GitHub](https://github.com/KR-LSB) · [InferBench](https://github.com/KR-LSB/inferbench)*
+*Benchmarked on RTX 5070 Ti 16GB, Windows 11 + WSL2 + Docker. All results are from EXAONE-Deep-7.8B-AWQ and Qwen3-8B-AWQ using awq_marlin kernels. Prefix caching tests used ~2K Korean technical document context with sequential requests.*
